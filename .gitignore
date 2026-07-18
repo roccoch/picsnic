@@ -6,14 +6,10 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
-
 node_modules
 dist
 dist-ssr
 *.local
-
-# Editor directories and files
-.vscode/*
 !.vscode/extensions.json
 .idea
 .DS_Store
@@ -25,19 +21,9 @@ dist-ssr
 shh.txt
 .env
 supabase/.temp/
-# Dependencies
 node_modules/
-
-# Build output
 dist/
-
-# Secrets
 shh.txt
-.env
 .env.local
-
-# Supabase temp files
 supabase/.temp/
-
-# IDE
 .vscode/
