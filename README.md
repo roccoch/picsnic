@@ -49,10 +49,23 @@ cp .env.example .env
 ```
 
 4. Set up the Supabase database
-
-Run the following SQL in your Supabase SQL Editor to create the `photos` table with proper Row Level Security:
+Run the following SQL in your Supabase SQL Editor to create the `galleries` and `photos` tables with proper Row Level Security:
 
 ```sql
+-- Create the galleries table (for PIN-based client access)
+create table galleries (
+  id uuid default uuid_generate_v4() primary key,
+  name text,
+  pin text not null,
+  photographer_id uuid references auth.users(id) on delete cascade,
+  created_at timestamp default now()
+);
+
+-- Enable RLS on galleries
+alter table galleries enable row level security;
+create policy "Public can view galleries" on galleries for select using (true);
+create policy "Authenticated can create galleries" on galleries for insert with check (auth.uid() = photographer_id);
+
 -- Create the photos table with relationships
 create table photos (
   id uuid default uuid_generate_v4() primary key,
@@ -63,7 +76,7 @@ create table photos (
   created_at timestamp default now()
 );
 
--- Enable Row Level Security
+-- Enable Row Level Security on photos
 alter table photos enable row level security;
 
 -- Anyone can view photos (clients don't need to log in)
