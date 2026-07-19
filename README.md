@@ -1,7 +1,7 @@
 ## Tech Stack
 - **Frontend:** React 19 + Vite
 - **Auth & Database:** Supabase (PostgreSQL)
-- **Storage:** Cloudflare R2 (S3-compatible, zero egress fees)
+- **Storage:** Cloudflare R2
 - **Backend:** Supabase Edge Functions (Deno)
 
 ## Features
