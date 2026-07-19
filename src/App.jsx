@@ -7,19 +7,28 @@ const App = () => {
     const [selectedPhoto, setSelectedPhoto] = useState(null);
     const [photos, setPhotos] = useState([]);
     const [isUploading, setIsUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
     const [user, setUser] = useState(null);
     const [loadingAuth, setLoadingAuth] = useState(true);
-    const [galleryId] = useState(crypto.randomUUID());
+    
+    const [galleryId, setGalleryId] = useState(null);
+    const [enteredPin, setEnteredPin] = useState("");
+    const [isAuthorized, setIsAuthorized] = useState(false);
+    const [pinError, setPinError] = useState("");
 
-    // Check if user is logged in on mount
     useEffect(() => {
-        // Get current session
         supabase.auth.getSession().then(({ data: { session } }) => {
-            setUser(session?.user ?? null);
+            if (session?.user) {
+                setUser(session.user);
+                const savedGalleryId = localStorage.getItem('galleryId');
+                if (savedGalleryId) {
+                    setGalleryId(savedGalleryId);
+                    setIsAuthorized(true);
+                }
+            }
             setLoadingAuth(false);
         });
 
-        // Listen for auth changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
             (_event, session) => {
                 setUser(session?.user ?? null);
@@ -29,59 +38,60 @@ const App = () => {
         return () => subscription.unsubscribe();
     }, []);
 
-    // Fetch photos from Supabase
     useEffect(() => {
-        if (!user) return;
+        if (!isAuthorized || !galleryId) return;
         
         const fetchPhotos = async () => {
             const { data, error } = await supabase
-            .from('photos')
-            .select('*')
-            .order('created_at', { ascending: false });
+                .from('photos')
+                .select('*')
+                .eq('gallery_id', galleryId)
+                .order('created_at', { ascending: false });
                 
             if (error) console.error("Error fetching photos:", error);
             else setPhotos(data);
         };
         fetchPhotos();
-    }, [user, galleryId]);
+    }, [isAuthorized, galleryId]);
 
-    // Login function
-    const handleLogin = async () => {
-        try {
-            // For Google OAuth:
-            // await supabase.auth.signInWithOAuth({ provider: 'google' });
-            
-            // For now, using email/password. In a real app you'd have a form.
-            // This is a simple prompt for demo purposes.
-            const email = prompt("Enter your email:");
-            const password = prompt("Enter your password:");
-            
-            const { error } = await supabase.auth.signInWithPassword({
-                email,
-                password,
-            });
-            
-            if (error) {
-                // If user doesn't exist, sign them up
-                if (error.message.includes("Invalid login credentials")) {
-                    await supabase.auth.signUp({ email, password });
-                } else {
-                    alert(error.message);
-                }
-            }
-        } catch (error) {
-            console.error("Login error:", error);
+    const handlePinLogin = async () => {
+        setPinError("");
+        
+        const { data: gallery, error } = await supabase
+            .from('galleries')
+            .select('id, pin, name')
+            .eq('id', galleryId)
+            .single();
+
+        if (error || !gallery) {
+            setPinError("Gallery not found.");
+            return;
         }
+
+        if (gallery.pin !== enteredPin) {
+            setPinError("Incorrect PIN.");
+            return;
+        }
+
+        const { error: signInError } = await supabase.auth.signInAnonymously();
+        if (signInError) {
+            setPinError(`Error signing in: ${signInError.message}`);
+            return;
+        }
+
+        localStorage.setItem('galleryId', galleryId);
+        setIsAuthorized(true);
     };
 
-    // Logout function
     const handleLogout = async () => {
         await supabase.auth.signOut();
+        localStorage.removeItem('galleryId');
+        setIsAuthorized(false);
         setPhotos([]);
+        setEnteredPin("");
+        setGalleryId(null);
     };
-
     
-    // 2. Upload to Cloudflare R2
     const handleUpload = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -89,13 +99,12 @@ const App = () => {
 
         try {
             const timestamp = Date.now();
-            const fileName = `photos/${timestamp}_${file.name}`;
+            const fileExt = file.name.split('.').pop();
+            const fileName = `photos/${crypto.randomUUID()}.${fileExt}`;
 
-            // 1. Get the auth token OUTSIDE the fetch call
             const { data: { session } } = await supabase.auth.getSession();
             const token = session?.access_token;
 
-            // 2. Ask our secure Edge Function for a presigned URL
             const response = await fetch("https://vckwrhhigxripsqziics.functions.supabase.co/generate-upload-url", {
                 method: "POST",
                 headers: { 
@@ -109,53 +118,77 @@ const App = () => {
             
             const { signedUrl } = await response.json();
 
-            // ... rest of the upload code ...
+            const uploadResponse= await new Promise((resolve, reject)=>{
+                const xhr = new XMLHttpRequest();
 
-            const uploadResponse = await fetch(signedUrl, {
-                method: 'PUT',
-                body: file,
-                headers: { 'Content-Type': file.type }
+                xhr.open('PUT',signedUrl,true);
+                xhr.setRequestHeader('Content-Type' , file.type);
+
+                xhr.upload.onprogress = (event) =>{
+                    if(event.lengthComputable) {
+                        const percent = (event.loaded /event.total) * 100;
+                        setUploadProgress(percent);
+                    }
+                };
+                 xhr.onload=()=>{
+                    if(xhr.status>=200&& xhr.status <300) resolve(xhr);
+                    else reject(new Error(`upload to r2 failed ${xhr.status} - ${xhr.responseText}`));
+                 };
+                 xhr.onerror=()=> reject(new Error(`upload to r2 failed ${xhr.status} - ${xhr.responseText}`));
+                 xhr.send(file);
             });
-
-            if (!uploadResponse.ok) throw new Error("Upload to R2 failed");
-
             const publicUrl = `https://pub-eb729244bff644f096fc52a1a6a4eba3.r2.dev/${fileName}`;
-
             await supabase.from('photos').insert([
                 { 
                     title: file.name, 
                     url: publicUrl,
                     gallery_id: galleryId,
-                    photographer_id: user.id // Now we have the user ID!
+                    photographer_id: user.id 
                 }
             ]);
+
 
         } catch (error) {
             console.error("Upload failed:", error);
         } finally {
             setIsUploading(false);
+            setUploadProgress(0);
         }
     };
 
-    // Show loading spinner while checking auth
     if (loadingAuth) {
         return <div style={{ textAlign: 'center', padding: '50px' }}>Loading...</div>;
     }
 
-    // Show login screen if not authenticated
-    if (!user) {
+    if (!isAuthorized) {
         return (
             <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center' }}>
                 <div style={{ textAlign: 'center' }}>
                     <h1>Picsnic</h1>
-                    <p className="subtitle" style={{ marginBottom: '30px' }}>Client Photo Gallery</p>
+                    <p className="subtitle" style={{ marginBottom: '30px' }}>Client Gallery Login</p>
+                    
+                    <input 
+                        type="text" 
+                        placeholder="Gallery ID" 
+                        value={galleryId || ""}
+                        onChange={(e) => setGalleryId(e.target.value)}
+                        style={{ display: 'block', margin: '10px auto', padding: '10px', borderRadius: '8px', border: '1px solid #ccc', width: '300px' }}
+                    />
+                    <input 
+                        type="password" 
+                        placeholder="Enter 4-digit PIN" 
+                        value={enteredPin}
+                        onChange={(e) => setEnteredPin(e.target.value)}
+                        style={{ display: 'block', margin: '10px auto', padding: '10px', borderRadius: '8px', border: '1px solid #ccc', width: '300px' }}
+                    />
                     <button 
-                        onClick={handleLogin}
+                        onClick={handlePinLogin}
                         className="upload-btn"
-                        style={{ fontSize: '16px', padding: '12px 32px' }}
+                        style={{ fontSize: '16px', padding: '12px 32px', marginTop: '10px' }}
                     >
-                        Photographer Login
+                        Enter Gallery
                     </button>
+                    {pinError && <p style={{ color: 'red', marginTop: '10px' }}>{pinError}</p>}
                 </div>
             </div>
         );
@@ -166,13 +199,21 @@ const App = () => {
     <div className="app-container">
         <header className="app-header">
             <h1>Picsnic</h1>
-            <p className="subtitle">Welcome, {user.email}</p>
+            <p className="subtitle">Gallery: {galleryId}</p>
             
-            <div style={{ marginTop: '15px', display: 'flex', gap: '10px', justifyContent: 'center' }}>
+            <div style={{ marginTop: '15px', display: 'flex', gap: '10px', justifyContent: 'center', alignItems: 'center' }}>
                 <input type="file" accept="image/*,video/*" onChange={handleUpload} id="upload-input" style={{ display: 'none' }} />
                 <label htmlFor="upload-input" className="upload-btn">
-                    {isUploading ? 'Uploading...' : 'Upload Media'}
+                    {isUploading ? `Uploading... ${Math.round(uploadProgress)}%` : 'Upload Media'}
                 </label>
+                
+                {/* FIXED: Changed classname to className */}
+                {isUploading && (
+                    <div className="progress-track" style={{ width: '200px', height: '10px', background: '#e0e0e0', borderRadius: '5px', overflow: 'hidden' }}>
+                        <div className="progress-fill" style={{ width: `${uploadProgress}%`, height: '100%', background: '#007aff', transition: 'width 0.2s' }} />
+                    </div>
+                )}
+
                 <button 
                     onClick={handleLogout}
                     className="close-btn"
