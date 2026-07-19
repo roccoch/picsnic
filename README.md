@@ -4,14 +4,14 @@
 - **Storage:** Cloudflare R2 (S3-compatible, zero egress fees)
 - **Backend:** Supabase Edge Functions (Deno)
 
-## Features (In Progress)
+## Features
 - [x] Responsive Apple Photos-style grid
 - [x] Cloudflare R2 storage setup
 - [x] Secure presigned URL uploads
 - [x] Database schema with RLS
 - [x] Photographer authentication
 - [ ] Client gallery sharing via links
-- [ ] Bulk download
+- [x] Bulk download
 - [ ] Video support
 
 ## Architecture
