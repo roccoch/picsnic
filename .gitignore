@@ -25,5 +25,7 @@ node_modules/
 dist/
 shh.txt
 .env.local
+supabase/.env.secrets
 supabase/.temp/
 .vscode/
+.env.secrets

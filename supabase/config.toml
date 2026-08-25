@@ -1,0 +1,13 @@
+project_id = "vckwrhhigxripsqziics"
+
+# These functions require a valid session token (anonymous sessions count).
+[functions.generate-upload-url]
+verify_jwt = true
+
+[functions.delete-file]
+verify_jwt = true
+
+# Called BEFORE the client has a session (PIN gate comes first),
+# so the gateway JWT check must be off; the function does its own PIN check.
+[functions.verify-gallery-pin]
+verify_jwt = false
