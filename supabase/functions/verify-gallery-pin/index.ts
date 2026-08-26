@@ -30,25 +30,25 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { galleryId, pin } = await req.json();
+    const { slug, pin } = await req.json();
 
-    if (!galleryId || !pin) {
-      return jsonResponse({ error: "Missing galleryId or pin" }, 400);
+    if (!slug || !pin) {
+      return jsonResponse({ error: "Missing gallery slug or pin" }, 400);
     }
 
     const { data: gallery, error } = await admin
       .from("galleries")
-      .select("id, name, pin")
-      .eq("id", galleryId)
+      .select("id, name, slug, pin")
+      .eq("slug", String(slug).toLowerCase().trim())
       .maybeSingle();
 
-    // Generic error on purpose: don't reveal whether the gallery ID
-    // exists or the PIN was wrong (prevents enumeration).
+    // Generic error on purpose: don't reveal whether the gallery exists
+    // or the PIN was wrong (prevents enumeration).
     if (error || !gallery || gallery.pin !== String(pin)) {
-      return jsonResponse({ error: "Invalid gallery ID or PIN" }, 401);
+      return jsonResponse({ error: "Invalid gallery or PIN" }, 401);
     }
 
-    return jsonResponse({ galleryId: gallery.id, name: gallery.name });
+    return jsonResponse({ galleryId: gallery.id, gallerySlug: gallery.slug, name: gallery.name });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
     return jsonResponse({ error: errorMessage }, 500);

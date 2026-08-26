@@ -11,3 +11,7 @@ verify_jwt = true
 # so the gateway JWT check must be off; the function does its own PIN check.
 [functions.verify-gallery-pin]
 verify_jwt = false
+
+# Gated by the ADMIN_PASSWORD secret inside the function itself.
+[functions.create-gallery]
+verify_jwt = false

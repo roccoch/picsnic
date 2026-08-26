@@ -19,10 +19,19 @@ const App = () => {
     const [loadingAuth, setLoadingAuth] = useState(true);
 
     const [galleryId, setGalleryId] = useState(null);
+    const [gallerySlug, setGallerySlug] = useState("");
     const [galleryName, setGalleryName] = useState("");
     const [enteredPin, setEnteredPin] = useState("");
     const [isAuthorized, setIsAuthorized] = useState(false);
     const [pinError, setPinError] = useState("");
+
+    // Admin mode state (create galleries without touching SQL)
+    const [isAdminMode, setIsAdminMode] = useState(false);
+    const [adminPassword, setAdminPassword] = useState("");
+    const [newName, setNewName] = useState("");
+    const [newSlug, setNewSlug] = useState("");
+    const [newPin, setNewPin] = useState("");
+    const [adminMsg, setAdminMsg] = useState("");
 
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session } }) => {
@@ -31,6 +40,7 @@ const App = () => {
                 const savedGalleryId = localStorage.getItem('galleryId');
                 if (savedGalleryId) {
                     setGalleryId(savedGalleryId);
+                    setGallerySlug(localStorage.getItem('gallerySlug') || "");
                     setIsAuthorized(true);
                 }
             }
@@ -71,12 +81,12 @@ const App = () => {
             const response = await fetch(`${FUNCTIONS_URL}/verify-gallery-pin`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ galleryId, pin: enteredPin })
+                body: JSON.stringify({ slug: gallerySlug, pin: enteredPin })
             });
             const data = await response.json();
 
             if (!response.ok) {
-                setPinError(data.error || "Invalid gallery ID or PIN.");
+                setPinError(data.error || "Invalid gallery or PIN.");
                 return;
             }
 
@@ -87,7 +97,9 @@ const App = () => {
             }
 
             localStorage.setItem('galleryId', data.galleryId);
+            localStorage.setItem('gallerySlug', data.gallerySlug);
             setGalleryId(data.galleryId);
+            setGallerySlug(data.gallerySlug);
             setGalleryName(data.name || "");
             setIsAuthorized(true);
         } catch {
@@ -95,13 +107,43 @@ const App = () => {
         }
     };
 
+    const handleCreateGallery = async () => {
+        setAdminMsg("");
+        try {
+            const response = await fetch(`${FUNCTIONS_URL}/create-gallery`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    password: adminPassword,
+                    name: newName,
+                    slug: newSlug.toLowerCase().trim(),
+                    pin: newPin
+                })
+            });
+            const data = await response.json();
+
+            if (!response.ok) {
+                setAdminMsg(`❌ ${data.error}`);
+                return;
+            }
+
+            setAdminMsg(`✅ Gallery "${data.name}" created! Share with the client:\n` +
+                `Gallery: ${data.slug}   PIN: ${newPin}`);
+            setNewName(""); setNewSlug(""); setNewPin("");
+        } catch {
+            setAdminMsg("❌ Network error. Please try again.");
+        }
+    };
+
     const handleLogout = async () => {
         await supabase.auth.signOut();
         localStorage.removeItem('galleryId');
+        localStorage.removeItem('gallerySlug');
         setIsAuthorized(false);
         setPhotos([]);
         setEnteredPin("");
         setGalleryId(null);
+        setGallerySlug("");
         setGalleryName("");
     };
 
@@ -225,35 +267,55 @@ const App = () => {
     }
 
     if (!isAuthorized) {
+        const inputStyle = { display: 'block', margin: '10px auto', padding: '10px', borderRadius: '8px', border: '1px solid #ccc', width: '300px' };
+
         return (
             <div className="app-container" style={{ justifyContent: 'center', alignItems: 'center' }}>
                 <div style={{ textAlign: 'center' }}>
                     <h1>Picsnic</h1>
-                    <p className="subtitle" style={{ marginBottom: '30px' }}>Client Gallery Login</p>
+                    <p className="subtitle" style={{ marginBottom: '30px' }}>
+                        {isAdminMode ? 'Admin: Create Gallery' : 'Client Gallery Login'}
+                    </p>
 
-                    <input
-                        type="text"
-                        placeholder="Gallery ID"
-                        value={galleryId || ""}
-                        onChange={(e) => setGalleryId(e.target.value)}
-                        style={{ display: 'block', margin: '10px auto', padding: '10px', borderRadius: '8px', border: '1px solid #ccc', width: '300px' }}
-                    />
-                    <input
-                        type="password"
-                        placeholder="Enter 4-digit PIN"
-                        value={enteredPin}
-                        onChange={(e) => setEnteredPin(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handlePinLogin()}
-                        style={{ display: 'block', margin: '10px auto', padding: '10px', borderRadius: '8px', border: '1px solid #ccc', width: '300px' }}
-                    />
-                    <button
-                        onClick={handlePinLogin}
-                        className="upload-btn"
-                        style={{ fontSize: '16px', padding: '12px 32px', marginTop: '10px' }}
-                    >
-                        Enter Gallery
-                    </button>
-                    {pinError && <p style={{ color: 'red', marginTop: '10px' }}>{pinError}</p>}
+                    {isAdminMode ? (
+                        <>
+                            <input type="password" placeholder="Admin password" value={adminPassword}
+                                onChange={(e) => setAdminPassword(e.target.value)} style={inputStyle} />
+                            <input type="text" placeholder="Display name (e.g. Maria & João Wedding)" value={newName}
+                                onChange={(e) => setNewName(e.target.value)} style={inputStyle} />
+                            <input type="text" placeholder="Slug (e.g. maria-joao-2026)" value={newSlug}
+                                onChange={(e) => setNewSlug(e.target.value)} style={inputStyle} />
+                            <input type="text" placeholder="PIN (e.g. 1234)" value={newPin}
+                                onChange={(e) => setNewPin(e.target.value)} style={inputStyle} />
+                            <button onClick={handleCreateGallery} className="upload-btn"
+                                style={{ fontSize: '16px', padding: '12px 32px', marginTop: '10px' }}>
+                                Create Gallery
+                            </button>
+                            {adminMsg && <p style={{ marginTop: '10px', whiteSpace: 'pre-line' }}>{adminMsg}</p>}
+                            <button onClick={() => setIsAdminMode(false)} className="close-btn"
+                                style={{ marginTop: '15px', background: 'transparent', border: 'none', textDecoration: 'underline' }}>
+                                ← Back to client login
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <input type="text" placeholder="Gallery name (e.g. maria-joao-2026)" value={gallerySlug}
+                                onChange={(e) => setGallerySlug(e.target.value)} style={inputStyle} autoCapitalize="off" autoCorrect="off" />
+                            <input type="password" placeholder="PIN" value={enteredPin}
+                                onChange={(e) => setEnteredPin(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handlePinLogin()}
+                                style={inputStyle} />
+                            <button onClick={handlePinLogin} className="upload-btn"
+                                style={{ fontSize: '16px', padding: '12px 32px', marginTop: '10px' }}>
+                                Enter Gallery
+                            </button>
+                            {pinError && <p style={{ color: 'red', marginTop: '10px' }}>{pinError}</p>}
+                            <button onClick={() => setIsAdminMode(true)} className="close-btn"
+                                style={{ marginTop: '25px', background: 'transparent', border: 'none', color: '#888', textDecoration: 'underline', fontSize: '13px' }}>
+                                Admin
+                            </button>
+                        </>
+                    )}
                 </div>
             </div>
         );
@@ -264,7 +326,7 @@ const App = () => {
     <div className="app-container">
         <header className="app-header">
             <h1>Picsnic</h1>
-            <p className="subtitle">Gallery: {galleryName || galleryId}</p>
+            <p className="subtitle">Gallery: {galleryName || gallerySlug}</p>
 
             <div style={{ marginTop: '15px', display: 'flex', gap: '10px', justifyContent: 'center', alignItems: 'center' }}>
                 <input type="file" accept="image/*,video/*" onChange={handleUpload} id="upload-input" style={{ display: 'none' }} />

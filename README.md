@@ -31,9 +31,18 @@ Client --(4) JWT + photoId--> delete-file --(checks ownership, deletes R2 object
 Three edge functions:
 | Function | Auth | Purpose |
 |---|---|---|
-| `verify-gallery-pin` | none (verify_jwt=false) | Validates gallery ID + PIN server-side so PINs are never exposed via the public API |
+| `verify-gallery-pin` | none (verify_jwt=false) | Validates gallery slug + PIN server-side so PINs are never exposed via the public API |
+| `create-gallery` | admin password secret | Creates a gallery (name, slug, PIN) from the in-app Admin screen |
 | `generate-upload-url` | JWT required | Validates the session and file type/size, returns a content-type-locked presigned R2 URL |
 | `delete-file` | JWT required | Deletes the R2 object and DB row, only for the uploader |
+
+Galleries are identified on the login screen by a human-friendly **slug**
+(e.g. `maria-joao-2026`), never by UUID. The UUID stays internal as the
+primary key. Create galleries either from the in-app **Admin** screen
+(password = `ADMIN_PASSWORD` secret) or via SQL:
+```sql
+insert into galleries (name, slug, pin) values ('Maria & João Wedding', 'maria-joao-2026', '1234');
+```
 
 ### Prerequisites
 - Node.js (v18+)
