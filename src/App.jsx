@@ -10,6 +10,19 @@ const FUNCTIONS_URL = import.meta.env.VITE_SUPABASE_URL
 const isVideo = (photo) =>
     photo.media_type === "video" || /\.(mp4|mov|webm|avi|mkv)$/i.test(photo.url);
 
+// crypto.randomUUID() requires a secure context (HTTPS or localhost).
+// Phones reaching the dev server over plain http://<lan-ip> have no
+// randomUUID, so fall back to crypto.getRandomValues (allowed everywhere).
+const randomId = () => {
+    if (crypto.randomUUID) return crypto.randomUUID();
+    return [8, 4, 4, 4, 12]
+        .map((n) => {
+            const bytes = crypto.getRandomValues(new Uint8Array(n));
+            return [...bytes].map((b) => (b % 16).toString(16)).join("");
+        })
+        .join("-");
+};
+
 const App = () => {
     const [selectedPhoto, setSelectedPhoto] = useState(null);
     const [photos, setPhotos] = useState([]);
@@ -155,7 +168,7 @@ const App = () => {
 
         try {
             const fileExt = file.name.split('.').pop();
-            const fileName = `photos/${crypto.randomUUID()}.${fileExt}`;
+            const fileName = `photos/${randomId()}.${fileExt}`;
 
             const { data: { session } } = await supabase.auth.getSession();
             const token = session?.access_token;

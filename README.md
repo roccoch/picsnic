@@ -143,14 +143,25 @@ supabase functions deploy
 ```json
 [
   {
-    "AllowedOrigins": ["http://localhost:5173"],
+    "AllowedOrigins": [
+      "http://localhost:5173",
+      "http://192.168.100.26:5173"
+    ],
     "AllowedMethods": ["PUT", "GET", "DELETE"],
     "AllowedHeaders": ["content-type"],
     "MaxAgeSeconds": 3600
   }
 ]
 ```
-Add your production domain to `AllowedOrigins` when you deploy.
+
+The origin must match **exactly what appears in the visitor's address bar**:
+scheme + host + port. `http://localhost:5173` only covers the PC's own
+browser — phones on your WiFi hit your PC's LAN IP (e.g.
+`http://192.168.100.26:5173`), and a deployed site hits your
+`https://yourproject.pages.dev` domain. Add one origin per way you serve
+the app (or `"*"` temporarily for a demo). Remember to run
+`npm run dev -- --host`, otherwise the dev server is not reachable from
+the LAN at all.
 
 ### Run it
 
